@@ -1,0 +1,822 @@
+--// MILIBASE AIMBOT + KNIFE AURA PRO //--
+--// made by @swarty – don't skid //--
+--// Features: Aimbot (torso, prediction), Knife Aura (Aura/Direction/Random) //--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+--// ========== SETTINGS ========== //
+local Settings = {
+    -- Aimbot
+    AutoPrediction = true,
+    JumpPrediction = true,
+    LeadTime = 0.12,
+    -- Knife Aura
+    KnifeAura = false,
+    Mode = "Aura", -- "Aura", "Direction", "Random"
+    Count = 20,
+    Speed = 0.05, -- saniye
+}
+
+--// ========== VARIABLES ========== //
+local targetVelocity = Vector3.new(0,0,0)
+local velocityHistory = {}
+local lastPositions = {}
+local weaponRemote = nil
+local settingsVisible = false
+local auraRunning = false
+local knifeRemote = nil
+local mapPart = nil
+
+--// ========== UTILITY ========== //
+
+local function GetTorso(character)
+    if not character then return nil end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if root then return root end
+    local torso = character:FindFirstChild("Torso")
+    if torso then return torso end
+    local upper = character:FindFirstChild("UpperTorso")
+    if upper then return upper end
+    return character:FindFirstChild("Head")
+end
+
+local function FindWeaponRemote()
+    local character = LocalPlayer.Character
+    if not character then return nil, nil end
+
+    local function searchRemote(obj)
+        for _, child in pairs(obj:GetChildren()) do
+            if child:IsA("RemoteEvent") then
+                local name = child.Name:lower()
+                if name:find("shot") or name:find("shoot") or name:find("fire") or name:find("gun") or name:find("attack") then
+                    return child
+                end
+            end
+            local found = searchRemote(child)
+            if found then return found end
+        end
+        return nil
+    end
+
+    for _, tool in pairs(character:GetChildren()) do
+        if tool:IsA("Tool") then
+            local remote = searchRemote(tool)
+            if remote then return remote, tool end
+        end
+    end
+
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in pairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                local remote = searchRemote(tool)
+                if remote then return remote, tool end
+            end
+        end
+    end
+    return nil, nil
+end
+
+--// ========== AIMBOT ========== //
+
+local function GetClosestPlayer()
+    local closest = nil
+    local shortestDist = math.huge
+    local cameraPos = Camera.CFrame.Position
+    local cameraLook = Camera.CFrame.LookVector
+    local viewport = Camera.ViewportSize
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            local torso = GetTorso(player.Character)
+            if humanoid and humanoid.Health > 0 and torso then
+                local pos = torso.Position
+                local dir = (pos - cameraPos).Unit
+                local dot = cameraLook:Dot(dir)
+                if dot > 0.1 then
+                    local screenPos, onScreen = Camera:WorldToScreenPoint(pos)
+                    if onScreen then
+                        local center = Vector2.new(viewport.X/2, viewport.Y/2)
+                        local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                        local worldDist = (pos - cameraPos).Magnitude
+                        local weighted = dist + worldDist * 0.3
+                        if weighted < shortestDist then
+                            shortestDist = weighted
+                            closest = player
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if closest and closest.Character then
+        local torso = GetTorso(closest.Character)
+        if torso then
+            local currentPos = torso.Position
+            table.insert(lastPositions, {pos = currentPos, time = tick()})
+            if #lastPositions > 10 then table.remove(lastPositions, 1) end
+            if #lastPositions >= 3 then
+                local newest = lastPositions[#lastPositions]
+                local oldest = lastPositions[#lastPositions - 2]
+                local dt = newest.time - oldest.time
+                if dt > 0.01 then
+                    local rawVel = (newest.pos - oldest.pos) / dt
+                    table.insert(velocityHistory, rawVel)
+                    if #velocityHistory > 5 then table.remove(velocityHistory, 1) end
+                    if #velocityHistory >= 3 then
+                        local totalWeight = 0
+                        local weightedSum = Vector3.new(0,0,0)
+                        for i, vel in ipairs(velocityHistory) do
+                            local weight = i / #velocityHistory
+                            weightedSum = weightedSum + vel * weight
+                            totalWeight = totalWeight + weight
+                        end
+                        targetVelocity = weightedSum / totalWeight
+                    else
+                        targetVelocity = rawVel
+                    end
+                end
+            end
+        end
+    else
+        targetVelocity = Vector3.new(0,0,0)
+        lastPositions = {}
+        velocityHistory = {}
+    end
+
+    return closest
+end
+
+local function GetPredictedPosition(target)
+    if not target or not target.Character then return nil end
+    local torso = GetTorso(target.Character)
+    if not torso then return nil end
+    local currentPos = torso.Position
+
+    if not Settings.AutoPrediction then
+        return currentPos
+    end
+
+    local predicted = currentPos + targetVelocity * Settings.LeadTime
+    if Settings.JumpPrediction and targetVelocity.Y > 15 then
+        predicted = predicted + Vector3.new(0, 5, 0)
+    end
+    return predicted
+end
+
+local function FireAtTarget(target)
+    local remote, weapon = FindWeaponRemote()
+    if not remote then return false end
+    weaponRemote = remote
+    if not target or not target.Character then return false end
+    local targetPos = GetPredictedPosition(target)
+    if not targetPos then return false end
+    remote:FireServer(targetPos)
+    return true
+end
+
+local function Fire()
+    local target = GetClosestPlayer()
+    if not target then
+        print("❌ No target in view")
+        return
+    end
+    local success = FireAtTarget(target)
+    if success and fireBtn then
+        TweenService:Create(fireBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(0,255,100)}):Play()
+        task.wait(0.08)
+        TweenService:Create(fireBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60,20,80)}):Play()
+    end
+end
+
+--// ========== KNIFE AURA ========== //
+
+local function GetKnifeRemote()
+    if knifeRemote then return knifeRemote end
+    local clientRemotes = LocalPlayer:FindFirstChild("ClientRemotes")
+    if clientRemotes then
+        knifeRemote = clientRemotes:FindFirstChild("KnifeThrow")
+        return knifeRemote
+    end
+    return nil
+end
+
+local function GetMapPart()
+    if mapPart then return mapPart end
+    local success, result = pcall(function()
+        return workspace._G.MilBase.Map_MilitaryBase:GetChildren()[627]
+    end)
+    if success and result then
+        mapPart = result
+        return mapPart
+    end
+    for _, child in pairs(workspace:GetDescendants()) do
+        if child:IsA("Part") and child.Name ~= "" then
+            mapPart = child
+            return child
+        end
+    end
+    return nil
+end
+
+local function ThrowKnife(targetPos)
+    local remote = GetKnifeRemote()
+    if not remote then return false end
+    local character = LocalPlayer.Character
+    if not character then return false end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+
+    local origin = root.Position + Vector3.new(0, 1.5, 0)
+    local lookAt = CFrame.lookAt(origin, targetPos)
+    local handle = GetMapPart()
+    if not handle then return false end
+
+    remote:InvokeServer(lookAt, targetPos, "Sakura", handle)
+    return true
+end
+
+-- AURA (360°)
+local function ThrowAura()
+    local count = Settings.Count
+    local radius = 50
+    local origin = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not origin then return end
+    origin = origin.Position + Vector3.new(0, 1.5, 0)
+
+    for i = 0, count - 1 do
+        local angle = (i / count) * 2 * math.pi
+        local x = origin.X + radius * math.cos(angle)
+        local z = origin.Z + radius * math.sin(angle)
+        local y = origin.Y + math.random(-3, 3)
+        ThrowKnife(Vector3.new(x, y, z))
+        task.wait(Settings.Speed)
+    end
+end
+
+-- DIRECTION (baktığın yöne – düzgün)
+local function ThrowDirection()
+    local count = Settings.Count
+    local origin = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not origin then return end
+    origin = origin.Position + Vector3.new(0, 1.5, 0)
+
+    local look = Camera.CFrame.LookVector
+    local spread = 10 -- derece (dar açı)
+    local up = Vector3.new(0, 1, 0)
+    local right = look:Cross(up).Unit
+    if right.Magnitude < 0.01 then right = Vector3.new(1,0,0) end
+    up = right:Cross(look).Unit
+
+    for i = 0, count - 1 do
+        local angle = math.rad((i / (count - 1)) * spread * 2 - spread)
+        local dir = (look + right * math.sin(angle) + up * math.cos(angle) * 0.2).Unit
+        local targetPos = origin + dir * 50
+        ThrowKnife(targetPos)
+        task.wait(Settings.Speed)
+    end
+end
+
+-- RANDOM
+local function ThrowRandom()
+    local count = Settings.Count
+    local origin = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not origin then return end
+    origin = origin.Position + Vector3.new(0, 1.5, 0)
+
+    for i = 1, count do
+        local dir = Vector3.new(
+            math.random(-100, 100) / 100,
+            math.random(-30, 50) / 100,
+            math.random(-100, 100) / 100
+        ).Unit
+        local targetPos = origin + dir * 50
+        ThrowKnife(targetPos)
+        task.wait(Settings.Speed)
+    end
+end
+
+local function KnifeLoop()
+    if not Settings.KnifeAura then
+        auraRunning = false
+        return
+    end
+    if auraRunning then return end
+    auraRunning = true
+
+    task.spawn(function()
+        while Settings.KnifeAura do
+            if Settings.Mode == "Aura" then
+                ThrowAura()
+            elseif Settings.Mode == "Direction" then
+                ThrowDirection()
+            elseif Settings.Mode == "Random" then
+                ThrowRandom()
+            end
+            task.wait(0.3)
+        end
+        auraRunning = false
+    end)
+end
+
+--// ========== GUI ========== //
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AimbotKnifePro"
+ScreenGui.Parent = LocalPlayer.PlayerGui
+ScreenGui.ResetOnSpawn = false
+
+-- SW BUTTON
+local swBtn = Instance.new("TextButton")
+swBtn.Size = UDim2.new(0, 90, 0, 38)
+swBtn.Position = UDim2.new(0.1, 0, 0.85, 0)
+swBtn.BackgroundColor3 = Color3.fromRGB(30,30,50)
+swBtn.Text = "⚙️ SW"
+swBtn.TextColor3 = Color3.fromRGB(255,255,255)
+swBtn.TextScaled = true
+swBtn.Font = Enum.Font.GothamBold
+swBtn.BackgroundTransparency = 0.1
+swBtn.BorderSizePixel = 0
+swBtn.Draggable = true
+swBtn.Active = true
+swBtn.Parent = ScreenGui
+
+local swCorner = Instance.new("UICorner")
+swCorner.CornerRadius = UDim.new(0, 8)
+swCorner.Parent = swBtn
+
+local swGlow = Instance.new("UIStroke")
+swGlow.Color = Color3.fromRGB(150,50,255)
+swGlow.Thickness = 2
+swGlow.Transparency = 0.3
+swGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+swGlow.Parent = swBtn
+
+-- FIRE BUTTON
+fireBtn = Instance.new("TextButton")
+fireBtn.Size = UDim2.new(0, 160, 0, 60)
+fireBtn.Position = UDim2.new(0.5, -80, 0.6, 0)
+fireBtn.BackgroundColor3 = Color3.fromRGB(60,20,80)
+fireBtn.Text = "🔥 FIRE"
+fireBtn.TextColor3 = Color3.fromRGB(255,255,255)
+fireBtn.TextScaled = true
+fireBtn.Font = Enum.Font.GothamBold
+fireBtn.BackgroundTransparency = 0.1
+fireBtn.BorderSizePixel = 0
+fireBtn.Draggable = true
+fireBtn.Active = true
+fireBtn.Parent = ScreenGui
+
+local fireCorner = Instance.new("UICorner")
+fireCorner.CornerRadius = UDim.new(0, 12)
+fireCorner.Parent = fireBtn
+
+local fireGlow = Instance.new("UIStroke")
+fireGlow.Color = Color3.fromRGB(255,50,50)
+fireGlow.Thickness = 2
+fireGlow.Transparency = 0.3
+fireGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+fireGlow.Parent = fireBtn
+
+-- PANEL (draggable, biraz büyük)
+local panel = Instance.new("Frame")
+panel.Size = UDim2.new(0, 320, 0, 420)
+panel.Position = UDim2.new(0.5, -160, 0.3, -210)
+panel.BackgroundColor3 = Color3.fromRGB(20,20,30)
+panel.BackgroundTransparency = 0.1
+panel.BorderSizePixel = 0
+panel.Visible = false
+panel.Draggable = true
+panel.Active = true
+panel.Parent = ScreenGui
+
+local panelCorner = Instance.new("UICorner")
+panelCorner.CornerRadius = UDim.new(0, 12)
+panelCorner.Parent = panel
+
+local panelGrad = Instance.new("UIGradient")
+panelGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(60,20,80)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(20,40,80)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(60,20,80))
+})
+panelGrad.Rotation = 45
+panelGrad.Parent = panel
+
+local panelBorder = Instance.new("UIStroke")
+panelBorder.Color = Color3.fromRGB(150,50,255)
+panelBorder.Thickness = 2
+panelBorder.Transparency = 0.3
+panelBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+panelBorder.Parent = panel
+
+-- BAŞLIK
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.Position = UDim2.new(0, 0, 0, 5)
+title.BackgroundTransparency = 1
+title.Text = "✦ AIMBOT + KNIFE ✦"
+title.TextColor3 = Color3.fromRGB(255,255,255)
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.Parent = panel
+
+local credit = Instance.new("TextLabel")
+credit.Size = UDim2.new(1, 0, 0, 16)
+credit.Position = UDim2.new(0, 0, 0, 32)
+credit.BackgroundTransparency = 1
+credit.Text = "made by @swarty"
+credit.TextColor3 = Color3.fromRGB(200,200,200)
+credit.TextScaled = true
+credit.Font = Enum.Font.Gotham
+credit.Parent = panel
+
+-- ===== AIMBOT BÖLÜMÜ =====
+local aimLabel = Instance.new("TextLabel")
+aimLabel.Size = UDim2.new(1, 0, 0, 20)
+aimLabel.Position = UDim2.new(0, 5, 0, 50)
+aimLabel.BackgroundTransparency = 1
+aimLabel.Text = "✦ AIMBOT"
+aimLabel.TextColor3 = Color3.fromRGB(150,100,255)
+aimLabel.TextScaled = true
+aimLabel.Font = Enum.Font.GothamBold
+aimLabel.TextXAlignment = Enum.TextXAlignment.Left
+aimLabel.Parent = panel
+
+-- Auto Pred
+local autoLabel = Instance.new("TextLabel")
+autoLabel.Size = UDim2.new(0.5, 0, 0, 22)
+autoLabel.Position = UDim2.new(0.05, 0, 0, 72)
+autoLabel.BackgroundTransparency = 1
+autoLabel.Text = "Auto Prediction"
+autoLabel.TextColor3 = Color3.fromRGB(255,255,255)
+autoLabel.TextScaled = true
+autoLabel.Font = Enum.Font.Gotham
+autoLabel.TextXAlignment = Enum.TextXAlignment.Left
+autoLabel.Parent = panel
+
+local autoBtn = Instance.new("TextButton")
+autoBtn.Size = UDim2.new(0, 55, 0, 20)
+autoBtn.Position = UDim2.new(0.72, 0, 0, 72)
+autoBtn.BackgroundColor3 = Settings.AutoPrediction and Color3.fromRGB(0,200,100) or Color3.fromRGB(100,100,100)
+autoBtn.Text = Settings.AutoPrediction and "ON" or "OFF"
+autoBtn.TextColor3 = Color3.fromRGB(255,255,255)
+autoBtn.TextScaled = true
+autoBtn.Font = Enum.Font.GothamBold
+autoBtn.BorderSizePixel = 0
+autoBtn.Parent = panel
+local autoCorner = Instance.new("UICorner")
+autoCorner.CornerRadius = UDim.new(0, 5)
+autoCorner.Parent = autoBtn
+
+autoBtn.MouseButton1Click:Connect(function()
+    Settings.AutoPrediction = not Settings.AutoPrediction
+    autoBtn.BackgroundColor3 = Settings.AutoPrediction and Color3.fromRGB(0,200,100) or Color3.fromRGB(100,100,100)
+    autoBtn.Text = Settings.AutoPrediction and "ON" or "OFF"
+end)
+
+-- Jump Pred
+local jumpLabel = Instance.new("TextLabel")
+jumpLabel.Size = UDim2.new(0.5, 0, 0, 22)
+jumpLabel.Position = UDim2.new(0.05, 0, 0, 98)
+jumpLabel.BackgroundTransparency = 1
+jumpLabel.Text = "Jump Prediction"
+jumpLabel.TextColor3 = Color3.fromRGB(255,255,255)
+jumpLabel.TextScaled = true
+jumpLabel.Font = Enum.Font.Gotham
+jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+jumpLabel.Parent = panel
+
+local jumpBtn = Instance.new("TextButton")
+jumpBtn.Size = UDim2.new(0, 55, 0, 20)
+jumpBtn.Position = UDim2.new(0.72, 0, 0, 98)
+jumpBtn.BackgroundColor3 = Settings.JumpPrediction and Color3.fromRGB(0,200,100) or Color3.fromRGB(100,100,100)
+jumpBtn.Text = Settings.JumpPrediction and "ON" or "OFF"
+jumpBtn.TextColor3 = Color3.fromRGB(255,255,255)
+jumpBtn.TextScaled = true
+jumpBtn.Font = Enum.Font.GothamBold
+jumpBtn.BorderSizePixel = 0
+jumpBtn.Parent = panel
+local jumpCorner = Instance.new("UICorner")
+jumpCorner.CornerRadius = UDim.new(0, 5)
+jumpCorner.Parent = jumpBtn
+
+jumpBtn.MouseButton1Click:Connect(function()
+    Settings.JumpPrediction = not Settings.JumpPrediction
+    jumpBtn.BackgroundColor3 = Settings.JumpPrediction and Color3.fromRGB(0,200,100) or Color3.fromRGB(100,100,100)
+    jumpBtn.Text = Settings.JumpPrediction and "ON" or "OFF"
+end)
+
+-- Lead Time Slider
+local leadLabel = Instance.new("TextLabel")
+leadLabel.Size = UDim2.new(0.4, 0, 0, 18)
+leadLabel.Position = UDim2.new(0.05, 0, 0, 124)
+leadLabel.BackgroundTransparency = 1
+leadLabel.Text = "Lead Time"
+leadLabel.TextColor3 = Color3.fromRGB(255,255,255)
+leadLabel.TextScaled = true
+leadLabel.Font = Enum.Font.Gotham
+leadLabel.TextXAlignment = Enum.TextXAlignment.Left
+leadLabel.Parent = panel
+
+local leadVal = Instance.new("TextLabel")
+leadVal.Size = UDim2.new(0.2, 0, 0, 18)
+leadVal.Position = UDim2.new(0.75, 0, 0, 124)
+leadVal.BackgroundTransparency = 1
+leadVal.Text = string.format("%.2f", Settings.LeadTime)
+leadVal.TextColor3 = Color3.fromRGB(150,200,255)
+leadVal.TextScaled = true
+leadVal.Font = Enum.Font.Gotham
+leadVal.Parent = panel
+
+local leadSlider = Instance.new("Frame")
+leadSlider.Size = UDim2.new(0.88, 0, 0, 4)
+leadSlider.Position = UDim2.new(0.05, 0, 0, 146)
+leadSlider.BackgroundColor3 = Color3.fromRGB(100,100,100)
+leadSlider.BorderSizePixel = 0
+leadSlider.Parent = panel
+local leadSliderCorner = Instance.new("UICorner")
+leadSliderCorner.CornerRadius = UDim.new(0, 2)
+leadSliderCorner.Parent = leadSlider
+
+local leadFill = Instance.new("Frame")
+leadFill.Size = UDim2.new((Settings.LeadTime - 0.02) / 0.28, 0, 1, 0)
+leadFill.BackgroundColor3 = Color3.fromRGB(150,50,255)
+leadFill.BorderSizePixel = 0
+leadFill.Parent = leadSlider
+local leadFillCorner = Instance.new("UICorner")
+leadFillCorner.CornerRadius = UDim.new(0, 2)
+leadFillCorner.Parent = leadFill
+
+local leadKnob = Instance.new("TextButton")
+leadKnob.Size = UDim2.new(0, 14, 0, 14)
+leadKnob.Position = UDim2.new((Settings.LeadTime - 0.02) / 0.28, -7, 0.5, -7)
+leadKnob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+leadKnob.Text = ""
+leadKnob.BorderSizePixel = 0
+leadKnob.Parent = leadSlider
+local leadKnobCorner = Instance.new("UICorner")
+leadKnobCorner.CornerRadius = UDim.new(0, 7)
+leadKnobCorner.Parent = leadKnob
+local leadDragging = false
+leadKnob.MouseButton1Down:Connect(function()
+    leadDragging = true
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        leadDragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if leadDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local absPos = leadSlider.AbsolutePosition
+        local absSize = leadSlider.AbsoluteSize
+        local percent = math.clamp((input.Position.X - absPos.X) / absSize.X, 0, 1)
+        Settings.LeadTime = 0.02 + percent * 0.28
+        leadFill.Size = UDim2.new(percent, 0, 1, 0)
+        leadKnob.Position = UDim2.new(percent, -7, 0.5, -7)
+        leadVal.Text = string.format("%.2f", Settings.LeadTime)
+    end
+end)
+
+-- ===== KNIFE AURA BÖLÜMÜ =====
+local knifeLabel = Instance.new("TextLabel")
+knifeLabel.Size = UDim2.new(1, 0, 0, 20)
+knifeLabel.Position = UDim2.new(0, 5, 0, 170)
+knifeLabel.BackgroundTransparency = 1
+knifeLabel.Text = "✦ KNIFE AURA"
+knifeLabel.TextColor3 = Color3.fromRGB(255,200,50)
+knifeLabel.TextScaled = true
+knifeLabel.Font = Enum.Font.GothamBold
+knifeLabel.TextXAlignment = Enum.TextXAlignment.Left
+knifeLabel.Parent = panel
+
+-- Aura Toggle
+local auraLabel = Instance.new("TextLabel")
+auraLabel.Size = UDim2.new(0.4, 0, 0, 22)
+auraLabel.Position = UDim2.new(0.05, 0, 0, 192)
+auraLabel.BackgroundTransparency = 1
+auraLabel.Text = "Knife Aura"
+auraLabel.TextColor3 = Color3.fromRGB(255,255,255)
+auraLabel.TextScaled = true
+auraLabel.Font = Enum.Font.Gotham
+auraLabel.TextXAlignment = Enum.TextXAlignment.Left
+auraLabel.Parent = panel
+
+local auraBtn = Instance.new("TextButton")
+auraBtn.Size = UDim2.new(0, 55, 0, 20)
+auraBtn.Position = UDim2.new(0.72, 0, 0, 192)
+auraBtn.BackgroundColor3 = Settings.KnifeAura and Color3.fromRGB(0,200,100) or Color3.fromRGB(100,100,100)
+auraBtn.Text = Settings.KnifeAura and "ON" or "OFF"
+auraBtn.TextColor3 = Color3.fromRGB(255,255,255)
+auraBtn.TextScaled = true
+auraBtn.Font = Enum.Font.GothamBold
+auraBtn.BorderSizePixel = 0
+auraBtn.Parent = panel
+local auraCorner = Instance.new("UICorner")
+auraCorner.CornerRadius = UDim.new(0, 5)
+auraCorner.Parent = auraBtn
+
+auraBtn.MouseButton1Click:Connect(function()
+    Settings.KnifeAura = not Settings.KnifeAura
+    auraBtn.BackgroundColor3 = Settings.KnifeAura and Color3.fromRGB(0,200,100) or Color3.fromRGB(100,100,100)
+    auraBtn.Text = Settings.KnifeAura and "ON" or "OFF"
+    if Settings.KnifeAura then
+        KnifeLoop()
+    else
+        auraRunning = false
+    end
+end)
+
+-- Mode Buttons
+local modeLabel = Instance.new("TextLabel")
+modeLabel.Size = UDim2.new(0.3, 0, 0, 18)
+modeLabel.Position = UDim2.new(0.05, 0, 0, 218)
+modeLabel.BackgroundTransparency = 1
+modeLabel.Text = "Mode"
+modeLabel.TextColor3 = Color3.fromRGB(255,255,255)
+modeLabel.TextScaled = true
+modeLabel.Font = Enum.Font.Gotham
+modeLabel.TextXAlignment = Enum.TextXAlignment.Left
+modeLabel.Parent = panel
+
+local modeBtns = {}
+local modes = {"Aura", "Direction", "Random"}
+for i, mode in ipairs(modes) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.26, 0, 0, 18)
+    btn.Position = UDim2.new(0.05 + (i-1) * 0.28, 0, 0, 240)
+    btn.BackgroundColor3 = Settings.Mode == mode and Color3.fromRGB(100,50,200) or Color3.fromRGB(30,30,50)
+    btn.Text = mode
+    btn.TextColor3 = Color3.fromRGB(255,255,255)
+    btn.TextScaled = true
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = panel
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 4)
+    btnCorner.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        Settings.Mode = mode
+        for _, b in pairs(modeBtns) do
+            b.BackgroundColor3 = Color3.fromRGB(30,30,50)
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(100,50,200)
+    end)
+    table.insert(modeBtns, btn)
+end
+
+-- Count TextBox
+local countLabel = Instance.new("TextLabel")
+countLabel.Size = UDim2.new(0.3, 0, 0, 18)
+countLabel.Position = UDim2.new(0.05, 0, 0, 268)
+countLabel.BackgroundTransparency = 1
+countLabel.Text = "Count"
+countLabel.TextColor3 = Color3.fromRGB(255,255,255)
+countLabel.TextScaled = true
+countLabel.Font = Enum.Font.Gotham
+countLabel.TextXAlignment = Enum.TextXAlignment.Left
+countLabel.Parent = panel
+
+local countBox = Instance.new("TextBox")
+countBox.Size = UDim2.new(0.2, 0, 0, 18)
+countBox.Position = UDim2.new(0.7, 0, 0, 268)
+countBox.BackgroundColor3 = Color3.fromRGB(30,30,50)
+countBox.Text = tostring(Settings.Count)
+countBox.TextColor3 = Color3.fromRGB(255,255,255)
+countBox.TextScaled = true
+countBox.Font = Enum.Font.Gotham
+countBox.BorderSizePixel = 0
+countBox.Parent = panel
+local countCorner = Instance.new("UICorner")
+countCorner.CornerRadius = UDim.new(0, 4)
+countCorner.Parent = countBox
+
+countBox.FocusLost:Connect(function()
+    local num = tonumber(countBox.Text)
+    if num and num > 0 then
+        Settings.Count = math.floor(num)
+    else
+        Settings.Count = 20
+        countBox.Text = "20"
+    end
+end)
+
+-- Speed TextBox
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(0.3, 0, 0, 18)
+speedLabel.Position = UDim2.new(0.05, 0, 0, 294)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "Speed (ms)"
+speedLabel.TextColor3 = Color3.fromRGB(255,255,255)
+speedLabel.TextScaled = true
+speedLabel.Font = Enum.Font.Gotham
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.Parent = panel
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(0.2, 0, 0, 18)
+speedBox.Position = UDim2.new(0.7, 0, 0, 294)
+speedBox.BackgroundColor3 = Color3.fromRGB(30,30,50)
+speedBox.Text = tostring(Settings.Speed * 1000)
+speedBox.TextColor3 = Color3.fromRGB(255,255,255)
+speedBox.TextScaled = true
+speedBox.Font = Enum.Font.Gotham
+speedBox.BorderSizePixel = 0
+speedBox.Parent = panel
+local speedCorner = Instance.new("UICorner")
+speedCorner.CornerRadius = UDim.new(0, 4)
+speedCorner.Parent = speedBox
+
+speedBox.FocusLost:Connect(function()
+    local num = tonumber(speedBox.Text)
+    if num and num >= 0 then
+        Settings.Speed = num / 1000
+    else
+        Settings.Speed = 0.05
+        speedBox.Text = "50"
+    end
+end)
+
+-- Close panel
+local closePanel = Instance.new("TextButton")
+closePanel.Size = UDim2.new(0, 24, 0, 24)
+closePanel.Position = UDim2.new(1, -28, 0, 4)
+closePanel.BackgroundColor3 = Color3.fromRGB(200,0,0)
+closePanel.Text = "✕"
+closePanel.TextColor3 = Color3.fromRGB(255,255,255)
+closePanel.TextScaled = true
+closePanel.Font = Enum.Font.GothamBold
+closePanel.BorderSizePixel = 0
+closePanel.BackgroundTransparency = 0.5
+closePanel.Parent = panel
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 6)
+closeCorner.Parent = closePanel
+
+closePanel.MouseButton1Click:Connect(function()
+    panel.Visible = false
+    settingsVisible = false
+end)
+
+--// SW BUTTON: toggle panel
+swBtn.MouseButton1Click:Connect(function()
+    settingsVisible = not settingsVisible
+    panel.Visible = settingsVisible
+end)
+
+--// FIRE BUTTON
+fireBtn.MouseButton1Click:Connect(Fire)
+
+--// KEYBIND: F for fire, L for aura toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        Fire()
+    elseif input.KeyCode == Enum.KeyCode.L then
+        Settings.KnifeAura = not Settings.KnifeAura
+        auraBtn.BackgroundColor3 = Settings.KnifeAura and Color3.fromRGB(0,200,100) or Color3.fromRGB(100,100,100)
+        auraBtn.Text = Settings.KnifeAura and "ON" or "OFF"
+        if Settings.KnifeAura then
+            KnifeLoop()
+        else
+            auraRunning = false
+        end
+    end
+end)
+
+--// Update weapon name
+local function updateWeapon()
+    local _, weapon = FindWeaponRemote()
+    if weapon then
+        fireBtn.Text = "🔥 " .. weapon.Name
+    else
+        fireBtn.Text = "🔥 FIRE"
+    end
+end
+updateWeapon()
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    updateWeapon()
+end)
+
+LocalPlayer.Character:WaitForChild("ChildAdded"):Connect(function(child)
+    if child:IsA("Tool") then updateWeapon() end
+end)
+
+print("✦ MILIBASE AIMBOT + KNIFE AURA PRO LOADED ✦")
+print("made by @swarty")
+print("⚙️ SW = toggle settings")
+print("🔥 FIRE = aimbot")
+print("🗡️ L = toggle knife aura")
+print("Modes: Aura, Direction, Random")
+
