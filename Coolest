@@ -790,7 +790,7 @@ PlayerTab:Toggle({
 })
 
 PlayerTab:Slider({
-    Title = "FOV Changer (not working correct)",
+    Title = "FOV Changer",
     Value = { Min = 70, Max = 120, Default = Camera.FieldOfView },
     Callback = function(v)
         Camera.FieldOfView = v
@@ -799,7 +799,7 @@ PlayerTab:Slider({
 
 -- GODMODE TOGGLE
 PlayerTab:Toggle({
-    Title = "Godmode",
+    Title = "Godmode(it can be collan with knife aura)",
     Value = Settings.Godmode,
     Callback = function(v)
         Settings.Godmode = v
@@ -811,7 +811,7 @@ PlayerTab:Toggle({
 local BuyerTab = Window:Tab({ Title = "shit", Icon = "info" })
 
 BuyerTab:Paragraph({
-    Title = "ty for purchase bra",
+    Title = "ty for purchase bra❤️",
     Text = [[
 THANKS for buying my script
 i will be updating this script if we get enough sales
