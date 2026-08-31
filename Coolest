@@ -17,9 +17,9 @@ local Settings = {
     Mode = "Aura",
     Count = 20,
     Speed = 0.05,
+    SelectedKnife = "Sakura",  -- <--- BURAYA EKLENDİ
     TPWalk = false,
     TPSpeed = 50,
-    WalkSpeed = 16,
     JumpPower = 50,
     InfiniteJump = false,
     Noclip = false,
@@ -225,7 +225,6 @@ end
 local function SetGodmode(enable)
     godmodeActive = enable
 
-    -- Önceki bağlantıları temizle
     if godmodeConnection then
         godmodeConnection:Disconnect()
         godmodeConnection = nil
@@ -241,7 +240,6 @@ local function SetGodmode(enable)
         local weaponMenu = center and center:FindFirstChild("WeaponMenu")
 
         if enable then
-            -- Godmode AÇIK: Menüleri kaldır
             if center then
                 centerParent = center.Parent
                 centerFrame = center
@@ -253,7 +251,6 @@ local function SetGodmode(enable)
                 weaponMenu.Parent = nil
             end
         else
-            -- Godmode KAPALI: Menüleri geri ekle
             if centerFrame and centerParent then
                 centerFrame.Parent = centerParent
                 centerFrame = nil
@@ -267,16 +264,13 @@ local function SetGodmode(enable)
         end
     end
 
-    -- Karakteri öldür (respawn olsun)
     local char = LocalPlayer.Character
     if char then
         char:BreakJoints()
     end
 
-    -- CharacterAdded olayını yakala
     godmodeConnection = LocalPlayer.CharacterAdded:Connect(function(newChar)
         if godmodeActive then
-            -- GUI'leri tekrar kaldır (respawn sonrası)
             local gameMenu2 = LocalPlayer.PlayerGui:FindFirstChild("GameMenu")
             if gameMenu2 then
                 local center2 = gameMenu2:FindFirstChild("Center")
@@ -293,7 +287,6 @@ local function SetGodmode(enable)
                 end
             end
 
-            -- Donmayı önlemek için Infinite Yield'daki unfreeze mantığı
             if godmodePlatformConnection then
                 godmodePlatformConnection:Disconnect()
                 godmodePlatformConnection = nil
@@ -302,18 +295,15 @@ local function SetGodmode(enable)
                 local char2 = LocalPlayer.Character
                 if char2 then
                     local humanoid = char2:FindFirstChild("Humanoid")
-                    local root = char2:FindFirstChild("HumanoidRootPart")
                     if humanoid then
                         humanoid.PlatformStand = false
-                        humanoid.Sit = false
-                    end
-                    if root then
-                        root.Anchored = false
+                        if humanoid:GetState() == Enum.HumanoidStateType.Physics or humanoid:GetState() == Enum.HumanoidStateType.Seated then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                        end
                     end
                 end
             end)
         else
-            -- Godmode kapalı, GUI'leri geri ekle
             local gameMenu2 = LocalPlayer.PlayerGui:FindFirstChild("GameMenu")
             if gameMenu2 then
                 if centerFrame and centerParent then
@@ -327,12 +317,10 @@ local function SetGodmode(enable)
                     weaponMenuParent = nil
                 end
             end
-            -- Platform bağlantısını durdur
             if godmodePlatformConnection then
                 godmodePlatformConnection:Disconnect()
                 godmodePlatformConnection = nil
             end
-            -- Bağlantıyı temizle
             if godmodeConnection then
                 godmodeConnection:Disconnect()
                 godmodeConnection = nil
@@ -371,6 +359,7 @@ local function GetMapPart()
     return nil
 end
 
+--// ========== DEĞİŞTİRİLEN YER: Seçilen bıçağı kullan ========== //
 local function ThrowKnife(targetPos)
     local remote = GetKnifeRemote()
     if not remote then return false end
@@ -384,7 +373,8 @@ local function ThrowKnife(targetPos)
     local handle = GetMapPart()
     if not handle then return false end
 
-    remote:InvokeServer(lookAt, targetPos, "Sakura", handle)
+    -- "Sakura" yerine Settings.SelectedKnife kullan
+    remote:InvokeServer(lookAt, targetPos, Settings.SelectedKnife, handle)
     return true
 end
 
@@ -591,11 +581,11 @@ local function CreateFireButton()
     end
 
     fireScreenGui = Instance.new("ScreenGui")
-fireScreenGui.Name = "FireButtonGUI"
-fireScreenGui.ResetOnSpawn = false
-fireScreenGui.Parent = LocalPlayer.PlayerGui
+    fireScreenGui.Name = "FireButtonGUI"
+    fireScreenGui.ResetOnSpawn = false
+    fireScreenGui.Parent = LocalPlayer.PlayerGui
 
-fireBtn = Instance.new("TextButton")
+    fireBtn = Instance.new("TextButton")
 fireBtn.Size = UDim2.new(0, 160, 0, 60)
 fireBtn.Position = UDim2.new(0.5, -80, 0.65, 0)
 fireBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 80)
@@ -729,6 +719,17 @@ KnifeTab:Dropdown({
     end
 })
 
+-- SELECT KNIFE (Bıçak seçici)
+KnifeTab:Dropdown({
+    Title = "Select Knife",
+    Values = {"Sakura", "Snowstorm", "Fang", "Saw", "Laser", "Nightblade", "Ghostblade", "Heat", "Seer", "Chroma"},
+    Value = Settings.SelectedKnife,
+    Callback = function(option)
+        Settings.SelectedKnife = option
+        print("🔪 Knife changed to: " .. option)
+    end
+})
+
 KnifeTab:Slider({
     Title = "Count",
     Value = { Min = 1, Max = 5000, Default = Settings.Count },
@@ -799,7 +800,7 @@ PlayerTab:Slider({
 
 -- GODMODE TOGGLE
 PlayerTab:Toggle({
-    Title = "Godmode(it can be collan with knife aura)",
+    Title = "Godmode(OP WORKS WİTH KNİFE AURA)",
     Value = Settings.Godmode,
     Callback = function(v)
         Settings.Godmode = v
@@ -808,10 +809,10 @@ PlayerTab:Toggle({
 })
 
 --// ===== TAB 4: BUYERS READ THIS ===== //
-local BuyerTab = Window:Tab({ Title = "shit", Icon = "info" })
+local BuyerTab = Window:Tab({ Title = "SHİT", Icon = "info" })
 
 BuyerTab:Paragraph({
-    Title = "ty for purchase bra❤️",
+    Title = "ty for buy ❤️",
     Text = [[
 THANKS for buying my script
 i will be updating this script if we get enough sales
@@ -842,4 +843,5 @@ print("made by @swarty")
 print("🔥 Fire button: Load Target ile oluştur")
 print("🗡️ L = toggle Knife Aura")
 print("🎯 Modes: Aura, Direction, Random, Rage")
+print("🔪 Select Knife ile bıçak değiştir")
 print("👤 Player tab: TPWalk, JumpPower, Infinite Jump, Noclip, FOV Changer, Godmode")
