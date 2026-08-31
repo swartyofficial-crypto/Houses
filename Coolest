@@ -221,7 +221,7 @@ local function Fire()
     end
 end
 
---// ========== GODMODE (DÜZELTİLDİ) ========== //
+--// ========== GODMODE (ÇALIŞAN) ========== //
 local function SetGodmode(enable)
     godmodeActive = enable
 
@@ -287,6 +287,7 @@ local function SetGodmode(enable)
                 end
             end
 
+            -- UNFREEZE SİSTEMİ (ÇALIŞIYOR)
             if godmodePlatformConnection then
                 godmodePlatformConnection:Disconnect()
                 godmodePlatformConnection = nil
@@ -296,18 +297,8 @@ local function SetGodmode(enable)
                 if char2 then
                     local humanoid = char2:FindFirstChild("Humanoid")
                     if humanoid then
-                        -- PlatformStand'ı kapat
                         humanoid.PlatformStand = false
-                        -- Eğer donmuşsa Running yap
-                        if humanoid:GetState() == Enum.HumanoidStateType.Physics or 
-                           humanoid:GetState() == Enum.HumanoidStateType.Seated or
-                           humanoid:GetState() == Enum.HumanoidStateType.GettingUp then
-                            humanoid:ChangeState(Enum.HumanoidStateType.Running)
-                        end
-                        -- Ekstra: WalkSpeed'i sıfırla (donma durumunda)
-                        if humanoid.WalkSpeed == 0 then
-                            humanoid.WalkSpeed = 16
-                        end
+                        humanoid:ChangeState(Enum.HumanoidStateType.Running)
                     end
                 end
             end)
