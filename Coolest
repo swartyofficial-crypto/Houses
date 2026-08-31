@@ -685,10 +685,10 @@ PlayerTab:Slider({
 })
 
 --// ===== TAB 4: BUYERS READ THIS ===== //
-local BuyerTab = Window:Tab({ Title = "BUYERS READ THIS", Icon = "info" })
+local BuyerTab = Window:Tab({ Title = "SHİT", Icon = "info" })
 
 BuyerTab:Paragraph({
-    Title = "📌 Important",
+    Title = "THANKS FOR BUYİNG 🤤",
     Text = [[
 THANKS for buying my script
 i will be updating this script if we get enough sales
