@@ -221,7 +221,7 @@ local function Fire()
     end
 end
 
---// ========== GODMODE (ÇALIŞAN) ========== //
+--// ========== GODMODE (UNFREEZE ÇALIŞIYOR) ========== //
 local function SetGodmode(enable)
     godmodeActive = enable
 
@@ -287,18 +287,22 @@ local function SetGodmode(enable)
                 end
             end
 
-            -- UNFREEZE SİSTEMİ (ÇALIŞIYOR)
+            -- INFINITE YIELD UNFREEZE SİSTEMİ (BİREBİR)
             if godmodePlatformConnection then
                 godmodePlatformConnection:Disconnect()
                 godmodePlatformConnection = nil
             end
-            godmodePlatformConnection = RunService.Stepped:Connect(function()
+            godmodePlatformConnection = RunService.Heartbeat:Connect(function()
                 local char2 = LocalPlayer.Character
                 if char2 then
                     local humanoid = char2:FindFirstChild("Humanoid")
+                    local root = char2:FindFirstChild("HumanoidRootPart")
                     if humanoid then
                         humanoid.PlatformStand = false
-                        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                        humanoid.Sit = false
+                    end
+                    if root then
+                        root.Anchored = false
                     end
                 end
             end)
