@@ -17,13 +17,13 @@ local Settings = {
     Mode = "Aura",
     Count = 20,
     Speed = 0.05,
-    -- Player Settings
     TPWalk = false,
     TPSpeed = 50,
+    WalkSpeed = 16,
     JumpPower = 50,
     InfiniteJump = false,
     Noclip = false,
-    FOV = 70,
+    Godmode = false,
 }
 
 local Players = game:GetService("Players")
@@ -45,6 +45,13 @@ local crosshair = nil
 local noclipEnabled = false
 local noclipConnection = nil
 local infiniteJumpConnection = nil
+local godmodeConnection = nil
+local godmodeActive = false
+local godmodePlatformConnection = nil
+local centerParent = nil
+local weaponMenuParent = nil
+local centerFrame = nil
+local weaponMenuFrame = nil
 
 --// ========== UTILITY ========== //
 
@@ -212,6 +219,126 @@ local function Fire()
         task.wait(0.08)
         TweenService:Create(fireBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60,20,80)}):Play()
     end
+end
+
+--// ========== GODMODE ========== //
+local function SetGodmode(enable)
+    godmodeActive = enable
+
+    -- Önceki bağlantıları temizle
+    if godmodeConnection then
+        godmodeConnection:Disconnect()
+        godmodeConnection = nil
+    end
+    if godmodePlatformConnection then
+        godmodePlatformConnection:Disconnect()
+        godmodePlatformConnection = nil
+    end
+
+    local gameMenu = LocalPlayer.PlayerGui:FindFirstChild("GameMenu")
+    if gameMenu then
+        local center = gameMenu:FindFirstChild("Center")
+        local weaponMenu = center and center:FindFirstChild("WeaponMenu")
+
+        if enable then
+            -- Godmode AÇIK: Menüleri kaldır
+            if center then
+                centerParent = center.Parent
+                centerFrame = center
+                center.Parent = nil
+            end
+            if weaponMenu then
+                weaponMenuParent = weaponMenu.Parent
+                weaponMenuFrame = weaponMenu
+                weaponMenu.Parent = nil
+            end
+        else
+            -- Godmode KAPALI: Menüleri geri ekle
+            if centerFrame and centerParent then
+                centerFrame.Parent = centerParent
+                centerFrame = nil
+                centerParent = nil
+            end
+            if weaponMenuFrame and weaponMenuParent then
+                weaponMenuFrame.Parent = weaponMenuParent
+                weaponMenuFrame = nil
+                weaponMenuParent = nil
+            end
+        end
+    end
+
+    -- Karakteri öldür (respawn olsun)
+    local char = LocalPlayer.Character
+    if char then
+        char:BreakJoints()
+    end
+
+    -- CharacterAdded olayını yakala
+    godmodeConnection = LocalPlayer.CharacterAdded:Connect(function(newChar)
+        if godmodeActive then
+            -- GUI'leri tekrar kaldır (respawn sonrası)
+            local gameMenu2 = LocalPlayer.PlayerGui:FindFirstChild("GameMenu")
+            if gameMenu2 then
+                local center2 = gameMenu2:FindFirstChild("Center")
+                local weaponMenu2 = center2 and center2:FindFirstChild("WeaponMenu")
+                if center2 and center2.Parent then
+                    centerParent = center2.Parent
+                    centerFrame = center2
+                    center2.Parent = nil
+                end
+                if weaponMenu2 and weaponMenu2.Parent then
+                    weaponMenuParent = weaponMenu2.Parent
+                    weaponMenuFrame = weaponMenu2
+                    weaponMenu2.Parent = nil
+                end
+            end
+
+            -- Donmayı önlemek için Infinite Yield'daki unfreeze mantığı
+            if godmodePlatformConnection then
+                godmodePlatformConnection:Disconnect()
+                godmodePlatformConnection = nil
+            end
+            godmodePlatformConnection = RunService.Heartbeat:Connect(function()
+                local char2 = LocalPlayer.Character
+                if char2 then
+                    local humanoid = char2:FindFirstChild("Humanoid")
+                    local root = char2:FindFirstChild("HumanoidRootPart")
+                    if humanoid then
+                        humanoid.PlatformStand = false
+                        humanoid.Sit = false
+                    end
+                    if root then
+                        root.Anchored = false
+                    end
+                end
+            end)
+        else
+            -- Godmode kapalı, GUI'leri geri ekle
+            local gameMenu2 = LocalPlayer.PlayerGui:FindFirstChild("GameMenu")
+            if gameMenu2 then
+                if centerFrame and centerParent then
+                    centerFrame.Parent = centerParent
+                    centerFrame = nil
+                    centerParent = nil
+                end
+                if weaponMenuFrame and weaponMenuParent then
+                    weaponMenuFrame.Parent = weaponMenuParent
+                    weaponMenuFrame = nil
+                    weaponMenuParent = nil
+                end
+            end
+            -- Platform bağlantısını durdur
+            if godmodePlatformConnection then
+                godmodePlatformConnection:Disconnect()
+                godmodePlatformConnection = nil
+            end
+            -- Bağlantıyı temizle
+            if godmodeConnection then
+                godmodeConnection:Disconnect()
+                godmodeConnection = nil
+            end
+        end
+    end)
 end
 
 --// ========== KNIFE ========== //
@@ -395,20 +522,14 @@ local function UpdatePlayerSettings()
     local humanoid = character:FindFirstChild("Humanoid")
     if not humanoid then return end
 
-    -- WalkSpeed (TPWalk)
     if Settings.TPWalk then
         humanoid.WalkSpeed = Settings.TPSpeed
     else
         humanoid.WalkSpeed = 16
     end
 
-    -- JumpPower
     humanoid.JumpPower = Settings.JumpPower
 
-    -- FOV
-    Camera.FieldOfView = Settings.FOV
-
-    -- Noclip
     if Settings.Noclip and not noclipEnabled then
         noclipEnabled = true
         if noclipConnection then noclipConnection:Disconnect() end
@@ -438,7 +559,6 @@ local function UpdatePlayerSettings()
         end
     end
 
-    -- Infinite Jump
     if Settings.InfiniteJump and not infiniteJumpConnection then
         infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
             local char = LocalPlayer.Character
@@ -453,13 +573,11 @@ local function UpdatePlayerSettings()
     end
 end
 
--- Character eklendiğinde ayarları uygula
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.1)
     UpdatePlayerSettings()
 end)
 
--- Sürekli güncelleme
 RunService.Heartbeat:Connect(function()
     UpdatePlayerSettings()
 end)
@@ -473,53 +591,53 @@ local function CreateFireButton()
     end
 
     fireScreenGui = Instance.new("ScreenGui")
-    fireScreenGui.Name = "FireButtonGUI"
-    fireScreenGui.ResetOnSpawn = false
-    fireScreenGui.Parent = LocalPlayer.PlayerGui
+fireScreenGui.Name = "FireButtonGUI"
+fireScreenGui.ResetOnSpawn = false
+fireScreenGui.Parent = LocalPlayer.PlayerGui
 
-    fireBtn = Instance.new("TextButton")
-    fireBtn.Size = UDim2.new(0, 160, 0, 60)
-    fireBtn.Position = UDim2.new(0.5, -80, 0.65, 0)
-    fireBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 80)
-    fireBtn.Text = "🔥 FIRE"
-    fireBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    fireBtn.TextScaled = true
-    fireBtn.Font = Enum.Font.GothamBold
-    fireBtn.BackgroundTransparency = 0.1
-    fireBtn.BorderSizePixel = 0
-    fireBtn.Draggable = true
-    fireBtn.Active = true
-    fireBtn.Parent = fireScreenGui
+fireBtn = Instance.new("TextButton")
+fireBtn.Size = UDim2.new(0, 160, 0, 60)
+fireBtn.Position = UDim2.new(0.5, -80, 0.65, 0)
+fireBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 80)
+fireBtn.Text = "🔥 FIRE"
+fireBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+fireBtn.TextScaled = true
+fireBtn.Font = Enum.Font.GothamBold
+fireBtn.BackgroundTransparency = 0.1
+fireBtn.BorderSizePixel = 0
+fireBtn.Draggable = true
+fireBtn.Active = true
+fireBtn.Parent = fireScreenGui
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = fireBtn
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = fireBtn
 
-    local glow = Instance.new("UIStroke")
-    glow.Color = Color3.fromRGB(255, 50, 50)
-    glow.Thickness = 2
-    glow.Transparency = 0.3
-    glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    glow.Parent = fireBtn
+local glow = Instance.new("UIStroke")
+glow.Color = Color3.fromRGB(255, 50, 50)
+glow.Thickness = 2
+glow.Transparency = 0.3
+glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+glow.Parent = fireBtn
 
-    local function updateWeapon()
-        local _, weapon = FindWeaponRemote()
-        if weapon then
-            fireBtn.Text = "🔥 " .. weapon.Name
-        else
-            fireBtn.Text = "🔥 FIRE"
-        end
+local function updateWeapon()
+    local _, weapon = FindWeaponRemote()
+    if weapon then
+        fireBtn.Text = "🔥 " .. weapon.Name
+    else
+        fireBtn.Text = "🔥 FIRE"
     end
+end
+updateWeapon()
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
     updateWeapon()
+end)
 
-    LocalPlayer.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        updateWeapon()
-    end)
+fireBtn.MouseButton1Click:Connect(Fire)
 
-    fireBtn.MouseButton1Click:Connect(Fire)
-
-    print("✅ Fire button created")
+print("✅ Fire button created (Coolest style)")
 end
 
 --// ========== WINDUI ========== //
@@ -626,7 +744,6 @@ KnifeTab:Slider({
 --// ===== TAB 3: PLAYER ===== //
 local PlayerTab = Window:Tab({ Title = "Player", Icon = "user" })
 
--- TPWalk
 PlayerTab:Toggle({
     Title = "TPWalk",
     Value = Settings.TPWalk,
@@ -645,7 +762,6 @@ PlayerTab:Slider({
     end
 })
 
--- JumpPower
 PlayerTab:Slider({
     Title = "JumpPower",
     Value = { Min = 0, Max = 500, Default = Settings.JumpPower },
@@ -655,7 +771,6 @@ PlayerTab:Slider({
     end
 })
 
--- Infinite Jump
 PlayerTab:Toggle({
     Title = "Infinite Jump",
     Value = Settings.InfiniteJump,
@@ -665,7 +780,6 @@ PlayerTab:Toggle({
     end
 })
 
--- Noclip
 PlayerTab:Toggle({
     Title = "Noclip",
     Value = Settings.Noclip,
@@ -675,20 +789,29 @@ PlayerTab:Toggle({
     end
 })
 
--- FOV Changer
 PlayerTab:Slider({
-    Title = "FOV Changer",
+    Title = "FOV Changer (not working correct)",
     Value = { Min = 70, Max = 120, Default = Camera.FieldOfView },
     Callback = function(v)
         Camera.FieldOfView = v
     end
 })
 
+-- GODMODE TOGGLE
+PlayerTab:Toggle({
+    Title = "Godmode",
+    Value = Settings.Godmode,
+    Callback = function(v)
+        Settings.Godmode = v
+        SetGodmode(v)
+    end
+})
+
 --// ===== TAB 4: BUYERS READ THIS ===== //
-local BuyerTab = Window:Tab({ Title = "SHİT", Icon = "info" })
+local BuyerTab = Window:Tab({ Title = "shit", Icon = "info" })
 
 BuyerTab:Paragraph({
-    Title = "THANKS FOR BUYİNG 🤤",
+    Title = "ty for purchase bra",
     Text = [[
 THANKS for buying my script
 i will be updating this script if we get enough sales
@@ -719,4 +842,4 @@ print("made by @swarty")
 print("🔥 Fire button: Load Target ile oluştur")
 print("🗡️ L = toggle Knife Aura")
 print("🎯 Modes: Aura, Direction, Random, Rage")
-print("👤 Player tab: TPWalk, WalkSpeed, JumpPower, Infinite Jump, Noclip, FOV Changer")
+print("👤 Player tab: TPWalk, JumpPower, Infinite Jump, Noclip, FOV Changer, Godmode")
