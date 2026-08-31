@@ -722,7 +722,7 @@ KnifeTab:Dropdown({
 -- SELECT KNIFE (Bıçak seçici)
 KnifeTab:Dropdown({
     Title = "Select Knife",
-    Values = {"Sakura", "Snowstorm", "Fang", "Saw", "Laser", "Nightblade", "Ghostblade", "Heat", "Seer", "Chroma"},
+    Values = {"Sakura", "Snow Storm", "Fang", "Saw", "Bat Wing", "Swirly Axe", "Luger", "Heat", "Seer", "Pixel"},
     Value = Settings.SelectedKnife,
     Callback = function(option)
         Settings.SelectedKnife = option
