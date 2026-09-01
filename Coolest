@@ -17,13 +17,14 @@ local Settings = {
     Mode = "Aura",
     Count = 20,
     Speed = 0.05,
-    SelectedKnife = "Sakura",  -- <--- BURAYA EKLENDİ
+    SelectedKnife = "Sakura",
     TPWalk = false,
     TPSpeed = 50,
     JumpPower = 50,
     InfiniteJump = false,
     Noclip = false,
     Godmode = false,
+    RainbowKnife = false, -- Rainbow Knife toggle
 }
 
 local Players = game:GetService("Players")
@@ -52,6 +53,22 @@ local centerParent = nil
 local weaponMenuParent = nil
 local centerFrame = nil
 local weaponMenuFrame = nil
+local knifeIndex = 1 -- Rainbow Knife için index
+
+-- Rainbow Knife Listesi (sırayla dönecek)
+local RainbowKnives = {
+    "Sakura",
+    "Snow Storm",
+    "Fang",
+    "Candy",
+    "Batwing",
+    "SwirlyAxe",
+    "Shadow",
+    "Heat",
+    "Seer",
+    "Pixel",
+    "Gingerscythe"
+}
 
 --// ========== UTILITY ========== //
 
@@ -362,7 +379,17 @@ local function GetMapPart()
     return nil
 end
 
---// ========== DEĞİŞTİRİLEN YER: Seçilen bıçağı kullan ========== //
+--// ========== RAINBOW KNIFE ========== //
+local function GetNextKnife()
+    local knife = RainbowKnives[knifeIndex]
+    knifeIndex = knifeIndex + 1
+    if knifeIndex > #RainbowKnives then
+        knifeIndex = 1
+    end
+    return knife
+end
+
+--// ========== DEĞİŞTİRİLEN YER: Rainbow Knife desteği ========== //
 local function ThrowKnife(targetPos)
     local remote = GetKnifeRemote()
     if not remote then return false end
@@ -376,8 +403,13 @@ local function ThrowKnife(targetPos)
     local handle = GetMapPart()
     if not handle then return false end
 
-    -- "Sakura" yerine Settings.SelectedKnife kullan
-    remote:InvokeServer(lookAt, targetPos, Settings.SelectedKnife, handle)
+    -- Rainbow modu açıksa sıradaki bıçağı al, değilse seçili bıçağı kullan
+    local knifeToUse = Settings.SelectedKnife
+    if Settings.RainbowKnife then
+        knifeToUse = GetNextKnife()
+    end
+
+    remote:InvokeServer(lookAt, targetPos, knifeToUse, handle)
     return true
 end
 
@@ -589,48 +621,48 @@ local function CreateFireButton()
     fireScreenGui.Parent = LocalPlayer.PlayerGui
 
     fireBtn = Instance.new("TextButton")
-fireBtn.Size = UDim2.new(0, 160, 0, 60)
-fireBtn.Position = UDim2.new(0.5, -80, 0.65, 0)
-fireBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 80)
-fireBtn.Text = "🔥 FIRE"
-fireBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-fireBtn.TextScaled = true
-fireBtn.Font = Enum.Font.GothamBold
-fireBtn.BackgroundTransparency = 0.1
-fireBtn.BorderSizePixel = 0
-fireBtn.Draggable = true
-fireBtn.Active = true
-fireBtn.Parent = fireScreenGui
+    fireBtn.Size = UDim2.new(0, 160, 0, 60)
+    fireBtn.Position = UDim2.new(0.5, -80, 0.65, 0)
+    fireBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 80)
+    fireBtn.Text = "🔥 FIRE"
+    fireBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    fireBtn.TextScaled = true
+    fireBtn.Font = Enum.Font.GothamBold
+    fireBtn.BackgroundTransparency = 0.1
+    fireBtn.BorderSizePixel = 0
+    fireBtn.Draggable = true
+    fireBtn.Active = true
+    fireBtn.Parent = fireScreenGui
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 12)
-corner.Parent = fireBtn
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = fireBtn
 
-local glow = Instance.new("UIStroke")
-glow.Color = Color3.fromRGB(255, 50, 50)
-glow.Thickness = 2
-glow.Transparency = 0.3
-glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-glow.Parent = fireBtn
+    local glow = Instance.new("UIStroke")
+    glow.Color = Color3.fromRGB(255, 50, 50)
+    glow.Thickness = 2
+    glow.Transparency = 0.3
+    glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    glow.Parent = fireBtn
 
-local function updateWeapon()
-    local _, weapon = FindWeaponRemote()
-    if weapon then
-        fireBtn.Text = "🔥 " .. weapon.Name
-    else
-        fireBtn.Text = "🔥 FIRE"
+    local function updateWeapon()
+        local _, weapon = FindWeaponRemote()
+        if weapon then
+            fireBtn.Text = "🔥 " .. weapon.Name
+        else
+            fireBtn.Text = "🔥 FIRE"
+        end
     end
-end
-updateWeapon()
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
     updateWeapon()
-end)
 
-fireBtn.MouseButton1Click:Connect(Fire)
+    LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        updateWeapon()
+    end)
 
-print("✅ Fire button created (Coolest style)")
+    fireBtn.MouseButton1Click:Connect(Fire)
+
+    print("✅ Fire button created (Coolest style)")
 end
 
 --// ========== WINDUI ========== //
@@ -733,6 +765,16 @@ KnifeTab:Dropdown({
     end
 })
 
+-- Rainbow Knife Toggle
+KnifeTab:Toggle({
+    Title = "Rainbow Knife",
+    Value = Settings.RainbowKnife,
+    Callback = function(v)
+        Settings.RainbowKnife = v
+        print("🌈 Rainbow Knife: " .. (v and "ON" or "OFF"))
+    end
+})
+
 KnifeTab:Slider({
     Title = "Count",
     Value = { Min = 1, Max = 5000, Default = Settings.Count },
@@ -803,7 +845,7 @@ PlayerTab:Slider({
 
 -- GODMODE TOGGLE
 PlayerTab:Toggle({
-    Title = "Godmode(OP WORKS WİTH KNİFE AURA)",
+    Title = "Godmode (OP)",
     Value = Settings.Godmode,
     Callback = function(v)
         Settings.Godmode = v
@@ -812,7 +854,7 @@ PlayerTab:Toggle({
 })
 
 --// ===== TAB 4: BUYERS READ THIS ===== //
-local BuyerTab = Window:Tab({ Title = "SHİT", Icon = "info" })
+local BuyerTab = Window:Tab({ Title = "BUYERS READ THIS", Icon = "info" })
 
 BuyerTab:Paragraph({
     Title = "ty for buy ❤️",
@@ -847,4 +889,5 @@ print("🔥 Fire button: Load Target ile oluştur")
 print("🗡️ L = toggle Knife Aura")
 print("🎯 Modes: Aura, Direction, Random, Rage")
 print("🔪 Select Knife ile bıçak değiştir")
+print("🌈 Rainbow Knife ile sırayla değiştir")
 print("👤 Player tab: TPWalk, JumpPower, Infinite Jump, Noclip, FOV Changer, Godmode")
